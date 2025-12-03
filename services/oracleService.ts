@@ -20,27 +20,49 @@ const getLanguageName = (code: LanguageCode): string => {
   return lang ? lang.label : 'English';
 };
 
-export const consultOracle = async (question: string, language: LanguageCode): Promise<string> => {
-  const apiKey = process.env.API_KEY;
+// Safe access to API Key that works in Vite/Browser environments
+const getApiKey = (): string | undefined => {
+  try {
+    // Check if process is defined (Node/Vite defines)
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore ReferenceError if process is not defined
+  }
+  return undefined;
+};
+
+// Lazy initialization to prevent top-level crashes
+let aiClient: GoogleGenAI | null = null;
+
+const getClient = (): GoogleGenAI => {
+  if (aiClient) return aiClient;
+
+  const apiKey = getApiKey();
 
   if (!apiKey) {
-    console.error("API Key is missing from process.env.API_KEY");
+    console.error("CRITICAL: API Key is missing. Ensure process.env.API_KEY is set in your environment (e.g., Vercel Environment Variables).");
     throw new Error("System Error: API Key is missing.");
   }
 
-  // Initialize the client strictly when needed
-  const ai = new GoogleGenAI({ apiKey });
+  aiClient = new GoogleGenAI({ apiKey });
+  return aiClient;
+};
 
-  const languageName = getLanguageName(language);
-  
-  // Dynamic system instruction to enforce language
-  const systemInstruction = `${BASE_INSTRUCTION}
+export const consultOracle = async (question: string, language: LanguageCode): Promise<string> => {
+  try {
+    // Initialize client only when requested
+    const ai = getClient();
+    const languageName = getLanguageName(language);
+    
+    // Dynamic system instruction to enforce language
+    const systemInstruction = `${BASE_INSTRUCTION}
 
 IMPORTANT: Answer in the following language: ${languageName}.
 Ensure the response is culturally relevant to this language if possible, but keep the chaotic oracle persona.
 `;
 
-  try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: question,
@@ -50,8 +72,14 @@ Ensure the response is culturally relevant to this language if possible, but kee
     });
 
     return response.text || "The spirits are silent.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Oracle Error:", error);
+    
+    // Check for common SDK initialization errors
+    if (error.message && error.message.includes("API Key must be set")) {
+      throw new Error("Configuration Error: API Key invalid.");
+    }
+    
     throw error;
   }
 };
