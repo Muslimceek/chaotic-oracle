@@ -15,14 +15,22 @@ Tone: mystical but sarcastic, absurd but relatable.
 Do NOT be generic. Make it funny and memorable.
 `;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const getLanguageName = (code: LanguageCode): string => {
   const lang = LANGUAGES.find(l => l.code === code);
   return lang ? lang.label : 'English';
 };
 
 export const consultOracle = async (question: string, language: LanguageCode): Promise<string> => {
+  const apiKey = process.env.API_KEY;
+
+  if (!apiKey) {
+    console.error("API Key is missing from process.env.API_KEY");
+    throw new Error("System Error: API Key is missing.");
+  }
+
+  // Initialize the client strictly when needed
+  const ai = new GoogleGenAI({ apiKey });
+
   const languageName = getLanguageName(language);
   
   // Dynamic system instruction to enforce language
